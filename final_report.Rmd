@@ -1,0 +1,207 @@
+---
+title: "Networks in Music"
+author: "Jason Wangsadinata"
+date: "QAC241 - Final Report"
+output: 
+    pdf_document:
+        keep_tex: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, messages = FALSE)
+```
+
+```{r, include=FALSE}
+library(tuneR)
+library(igraph)
+```
+
+```{r}
+######################################
+######### FINAL PROJECT CODE #########
+######################################
+
+# Setting up
+setwd("/Volumes/JCW/Senior Year/QAC241/finalproject")
+#install.packages("tuneR")
+
+# Cleaning up dataset
+load("finalproj.RData")
+df <- getMidiNotes(content)
+df$notename <- as.character(df$notename) 
+# table(df$channel)
+
+# Boolean to take out each instruments
+piano1 <- df$channel == 0
+bass_low <- df$channel == 1
+ac_guitar <- df$channel == 2
+melody <- df$channel == 3
+melody2 <- df$channel == 4
+top_bass <- df$channel == 5
+keys1 <- df$channel == 6
+dist_guitar <- df$channel == 7
+clean_guitar <- df$channel == 8
+piano2 <- df$channel == 9
+brass <- df$channel == 10
+trumpets <- df$channel == 11
+saxophones <- df$channel == 12
+trombones <- df$channel == 13
+strings <- df$channel == 14
+
+# Create a separate data frame for each instruments
+df_piano1 <- df[piano1,]
+df_bass_low <- df[bass_low,]
+df_ac_guitar <- df[ac_guitar,]
+df_melody <- df[melody,]
+df_melody2 <- df[melody2,]
+df_top_bass <- df[top_bass,]
+df_keys1 <- df[keys1,]
+df_dist_guitar <- df[dist_guitar,]
+df_clean_guitar <- df[clean_guitar,]
+df_piano2 <- df[piano2,]
+df_brass <- df[brass,]
+df_trumpets <- df[trumpets,]
+df_saxophones <- df[saxophones,]
+df_trombones <- df[trombones,]
+df_strings <- df[strings,]
+
+# Helper function to create the graph data frame
+graphify_df <- function(dframe){
+  from <- character(0)
+  to <- character(0)
+  curr_time <- dframe$time[1] 
+  prev_notes <- character(0)
+  curr_notes <- c(character(0), dframe$notename[1])
+  for (i in 2:length(dframe$time)) {
+    if (dframe$time[i] == curr_time) {
+      curr_notes <- c(curr_notes, dframe$notename[i])
+    }
+    else {
+      prev_notes = curr_notes
+      curr_note <- dframe$notename[i]
+      curr_notes = c(character(0), curr_note)
+      for (j in 1:length(prev_notes)) {
+        from <- c(from, prev_notes[j])
+        to <- c(to, curr_note)
+      }
+      curr_time = dframe$time[i]
+    }
+  }
+  df <- data.frame(from = from, to = to, stringsAsFactors = F)
+  df
+}
+
+# Helper function to get a graph and the cluster based on igraph package
+make_graph_and_cluster <- function(dframe){
+  graph <- graph_from_data_frame(d=graphify_df(dframe), directed=T)
+  cluster <- cluster_edge_betweenness(graph)
+  gc <- list(graph, cluster)
+  gc
+}
+
+# Helper function to plot the graph with the corresponding membership and communities.
+# The graph is exported as a graphml file to the directory.
+# This function also prints out the size of the communities formed.
+plot_graph <- function(name, gc){
+  graph <- gc[[1]]
+  cluster <- gc[[2]]
+  cat(length(communities(cluster)))
+  E(graph)$weight <- 1
+  graph_simp <- simplify(graph, edge.attr.comb=list(weight="sum"), remove.loops = F)
+  write_graph(graph_simp, name, "graphml")
+  plot(graph_simp, edge.width = abs(log1p(E(graph_simp)$weight)), 
+       vertex.color = membership(cluster), mark.groups = communities(cluster))
+}
+```
+
+## Motivation
+
+Music has always been a huge part of my life. Inherently, I noticed patterns within the underlying structure of melodies and harmonies. With that, I decided to do my final project on a musical arrangement, hopefully to gain new insights and understanding.
+
+There are two reasons in attempting this project. First, I want to use my newfound network analysis knowledge and tools to further understand the relations between musical notes. There are a lot of established theories in how a note should resolve, what notes it should go to, and I was wondering whether network analysis tools will be consistent or rather give another interesting observation. 
+
+Also, another motivation is to create a visualization that will help us understand how arrangement is structured, how varied the range between different instruments, and is there commonality between them. This motivation will be more of an informative goal rather than exploration to confirm established theories.
+
+## Dataset
+
+In this project, I will be using a MIDI (Musical Instruments Digital Interface) arrangement of a popular song by Earth, Wind and Fire, called "September". I decided to remove the drum parts, since it does not correspond to any quantifiable note value, and as a result, my dataset is $\tt{september.mid}$, which contains 15 different tracks of piano, bass, guitar, melody and brass parts, as seen in the image below. The MIDI data contains information about time of a note, length of a note, track, channel, note, note name and its velocity.
+
+\includegraphics{data}
+
+## Data Processing
+
+I am using a package called $\tt{tuneR}$, which is a utility package that is able to read midi data and convert it into a dataframe in R.
+
+The way I am constructing the network is by looking at the time column and notename column of the resulting dataframe. For a single note instruments, like bass, the graph is created in a straight forward manner, where there is a directed edge from one note to another if they are in the next time frame. Each note is the vertex of the network. However, for a chordal instrument, where at a particular time there are more than one notes, what I did is to write a function that create a directed edge for each notes in the chord, to each notes in the next chord.
+
+To analyze the network, I used the Girvan-Newman algorithm under the $\tt{igraph}$'s $\tt{cluster\_edge\_betweenness}$ to create cluster based on the edges that are most likely between communities. I tried the other clustering algorithms as well, but I was not happy with the results, since most of it are only suitable for big datasets or based on randomness (like $\tt{cluster\_walktrap}$). I believe the $\tt{cluster\_edge\_betweenness}$ is the most suitable approach to analyze the network.
+
+## Results - Cluster Analsyis
+
+Here is an image of the network of all 15 different tracks.
+
+\includegraphics{r_network}
+
+I will talk about several results that I found interesting in graph above.
+
+## Main Piano
+
+\includegraphics{graph_images/piano1}
+
+The network for the main piano is rather interesting, because there are 27 different vertices and 23 different clusters formed. In other words, most of the nodes for a single cluster only containing itself. This might be attributed on how the graph is constructed. Piano is a chordal instruments, and since there are common notes between different chords (say, A in both A major chord and F# minor chord), there are multiple edges going around every single node. Therefore, the clustering results by using $\tt{cluster\_edge\_betweenness}$ yields what it looks like. The thickness of the edge corresponds to the frequency of that link. Below is the membership of each note in the cluster.
+
+```{r}
+gc <- make_graph_and_cluster(df_piano1)
+c <- gc[[2]]
+membership(c)
+```
+
+## Main Melody
+
+\includegraphics{graph_images/melody}
+
+The network for the main piano is quite enlightening for me, because I can clearly see the movements of melodies. It can be observed that notes such as f#, d', f' and g#' are passing notes, which is a very common concept in music theory. We can also clearly see the separation of the verse and chorus in the graph, the upper part of the network is the verse, while the lower part is the chorus. The clusters are more easily identifiable than the main piano part. Below is the membership of each note in the cluster.
+
+```{r}
+gc <- make_graph_and_cluster(df_melody)
+c <- gc[[2]]
+membership(c)
+```
+
+## Keyboard
+
+\includegraphics{graph_images/keys1}
+
+This is probably my favorite network out of all the networks I obtained. The structure in the middle looks like a $C_6$, which is a cyclic graph with 6 elements. It somehow reminds me of a benzene structure. Also, the separation of clusters are very obvious. We can see that the clusters represents the octave ranges, and there are only few notes that acts as a bridge between the two clusters. Below is the membership of each note in the cluster.
+
+```{r}
+gc <- make_graph_and_cluster(df_keys1)
+c <- gc[[2]]
+membership(c)
+```
+
+## Distortion Guitar
+
+\includegraphics{graph_images/dist_guitar}
+
+The distortion guitar has a very unique structure as well. It has one big cluster in the middle, and 3 separate islands containing one node. The node on the top, a', has a thick line going to itself, which was to be expected since the intro of the song was a repeated trill of a'. This network also shows that the purpose of distortion guitar in this arrangement is to add colour, rather than to add harmony or foundation of the instruments. Below is the membership of each note in the cluster.
+
+```{r}
+gc <- make_graph_and_cluster(df_dist_guitar)
+c <- gc[[2]]
+membership(c)
+```
+
+## Results - Visualization of Musical Range
+
+Here is my second result, which is visualizing the graph in a linear way, based on the value of the note. This graph is the same graph as above, but this is exported as a graphml object and edited on Cytoscape. The idea is to map the value of the notes on the x-axis, the track number on the y-axis (being reversed) and understand the dynamic range of each musical instrument.
+
+\includegraphics{line_network}
+
+Based on the visualization above, few interesting observations can be seen. First, we can see that a' is the only common notes between all the instruments. Well, this is to be expected because the song has a root key of A. Also, we can see that the musical range of all the arrangement spans about 6 octave range, starting from C#, to c#''''. Few other observations can also be made, such as how spread out the notes in an instrument is. We can clearly see the difference between keyboards (labelled in pink) and distortion guitar (labelled in light green, the one directly under it) clearly.
+
+## Conclusions
+
+In a nutshell, network analysis tools and techniques corresponds to the music theories that has been already established. Yet, it can help in explaining the common patterns and also visualize, say dynamic range in a more informative way.
+
+Thank you so much Professor Pavel Oleinikov for a wonderful class. I hope you enjoy my final project.
